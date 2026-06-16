@@ -58,8 +58,10 @@
             <div id="frameMenu" class="hidden flex space-x-4 overflow-x-auto no-scrollbar pb-2">
                 <button onclick="addFrame('polaroid')" class="px-4 py-2 bg-white text-gray-900 rounded-lg font-bold">กรอบโพลารอยด์</button>
                 <button onclick="addFrame('neon')" class="px-4 py-2 bg-pink-500 text-white rounded-lg font-bold border-2 border-pink-300 shadow-[0_0_10px_#ec4899]">กรอบนีออน</button>
+                <button onclick="document.getElementById('customFrameInput').click()" class="px-4 py-2 bg-yellow-500 text-white rounded-lg font-bold">เพิ่มกรอบเอง</button>
                 <button onclick="addFrame('clear')" class="px-4 py-2 bg-gray-600 text-white rounded-lg">ลบกรอบรูป</button>
             </div>
+            <input type="file" id="customFrameInput" accept="image/png,image/jpeg" class="hidden" onchange="handleCustomFrameUpload(event)" />
         </div>
     </div>
 
@@ -265,6 +267,44 @@
             canvas.add(currentFrame);
             // ดันกรอบรูปให้อยู่ชั้นบนสุดเสมอ
             currentFrame.bringToFront();
+        }
+
+        function handleCustomFrameUpload(event) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            if (!file.type.startsWith('image/')) {
+                alert('กรุณาเลือกไฟล์รูปภาพ .png หรือ .jpeg');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                addCustomFrame(e.target.result);
+            };
+            reader.readAsDataURL(file);
+            event.target.value = '';
+        }
+
+        function addCustomFrame(dataURL) {
+            if (currentFrame) canvas.remove(currentFrame);
+
+            fabric.Image.fromURL(dataURL, function(img) {
+                const scale = Math.max(canvas.width / img.width, canvas.height / img.height);
+                img.set({
+                    left: 0,
+                    top: 0,
+                    selectable: false,
+                    evented: false,
+                    hasControls: false,
+                    hasBorders: false,
+                    hoverCursor: 'default'
+                });
+                img.scale(scale);
+                currentFrame = img;
+                canvas.add(currentFrame);
+                currentFrame.bringToFront();
+                canvas.renderAll();
+            });
         }
 
         getCameras();
