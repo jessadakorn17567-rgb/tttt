@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Photobooth</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <style>
+        /* ซ่อน Scrollbar ของเมนูสติกเกอร์ให้ดูสะอาดตา */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-gray-900 text-white h-screen flex flex-col font-sans overflow-hidden">
+
+    <header class="p-4 flex justify-between items-center bg-gray-800 shadow-md h-16 z-20">
+        <h1 class="text-xl font-bold text-pink-400">✨ My Booth</h1>
+        
+        <div id="cameraSelector" class="flex items-center space-x-2">
+            <select id="cameraSelect" class="bg-gray-700 text-white text-sm rounded-lg px-2 py-1 outline-none w-32 truncate">
+                <option>ค้นหากล้อง...</option>
+            </select>
+        </div>
+
+        <div id="actionButtons" class="hidden flex space-x-2">
+            <button onclick="retakePhoto()" class="bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded-full font-semibold text-sm transition">
+                ถ่ายใหม่
+            </button>
+            <button onclick="savePhoto()" class="bg-pink-500 hover:bg-pink-600 px-4 py-2 rounded-full font-semibold text-sm transition text-white shadow-lg">
+                บันทึกรูป
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 flex justify-center items-center p-4 relative z-10">
+        <div id="canvasContainer" class="bg-black w-full max-w-md aspect-[3/4] rounded-2xl shadow-2xl border-4 border-gray-700 flex justify-center items-center overflow-hidden relative">
+            <video id="videoElement" class="w-full h-full object-cover transform scale-x-[-1]" autoplay playsinline></video>
+            
+            <div id="editorWrapper" class="hidden w-full h-full">
+                <canvas id="canvasElement"></canvas>
+            </div>
+        </div>
+    </main>
+
+    <div id="subToolbar" class="hidden absolute bottom-24 left-0 w-full z-20 px-4 transition-transform">
+        <div class="max-w-md mx-auto bg-gray-800/90 backdrop-blur-md rounded-2xl p-4 shadow-xl border border-gray-700">
+            <div id="stickerMenu" class="hidden flex space-x-4 overflow-x-auto no-scrollbar pb-2">
+                <button onclick="addTextSticker('😎')" class="text-4xl hover:scale-110 transition">😎</button>
+                <button onclick="addTextSticker('✨')" class="text-4xl hover:scale-110 transition">✨</button>
+                <button onclick="addTextSticker('💖')" class="text-4xl hover:scale-110 transition">💖</button>
+                <button onclick="addTextSticker('🏍️')" class="text-4xl hover:scale-110 transition">🏍️</button>
+                <button onclick="addTextSticker('🔧')" class="text-4xl hover:scale-110 transition">🔧</button>
+                <button onclick="addTextSticker('🍪')" class="text-4xl hover:scale-110 transition">🍪</button>
+                <button onclick="addTextSticker('🎓')" class="text-4xl hover:scale-110 transition">🎓</button>
+                <button onclick="addTextSticker('SWR 17')" class="px-3 py-1 bg-white text-black font-bold rounded-lg hover:scale-105 transition">SWR 17</button>
+            </div>
+            <div id="frameMenu" class="hidden flex space-x-4 overflow-x-auto no-scrollbar pb-2">
+                <button onclick="addFrame('polaroid')" class="px-4 py-2 bg-white text-gray-900 rounded-lg font-bold">กรอบโพลารอยด์</button>
+                <button onclick="addFrame('neon')" class="px-4 py-2 bg-pink-500 text-white rounded-lg font-bold border-2 border-pink-300 shadow-[0_0_10px_#ec4899]">กรอบนีออน</button>
+                <button onclick="addFrame('clear')" class="px-4 py-2 bg-gray-600 text-white rounded-lg">ลบกรอบรูป</button>
+            </div>
+        </div>
+    </div>
+
+    <footer id="bottomToolbar" class="bg-gray-800 p-4 rounded-t-3xl shadow-[0_-10px_30px_rgba(0,0,0,0.5)] pb-8 z-30 relative">
+        <div class="flex justify-around items-center max-w-md mx-auto">
+            <button onclick="toggleMenu('frameMenu')" id="btnFrame" class="flex flex-col items-center text-gray-500 transition opacity-50 cursor-not-allowed">
+                <div class="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center mb-1 text-xl">🖼️</div>
+                <span class="text-xs">กรอบรูป</span>
+            </button>
+
+            <button id="btnCapture" onclick="takePhoto()" class="w-16 h-16 bg-white rounded-full border-4 border-pink-500 flex items-center justify-center shadow-[0_0_20px_rgba(236,72,153,0.6)] active:scale-95 transition">
+                <div class="w-12 h-12 bg-pink-500 rounded-full"></div>
+            </button>
+
+            <button onclick="toggleMenu('stickerMenu')" id="btnSticker" class="flex flex-col items-center text-gray-500 transition opacity-50 cursor-not-allowed">
+                <div class="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center mb-1 text-xl">🌟</div>
+                <span class="text-xs">สติกเกอร์</span>
+            </button>
+        </div>
+    </footer>
+
+    <script>
+        const video = document.getElementById('videoElement');
+        const editorWrapper = document.getElementById('editorWrapper');
+        const cameraSelect = document.getElementById('cameraSelect');
+        const btnFrame = document.getElementById('btnFrame');
+        const btnSticker = document.getElementById('btnSticker');
+        const btnCapture = document.getElementById('btnCapture');
+        
+        let currentStream = null;
+        let canvas = null; // ตัวแปรเก็บ Fabric.js Canvas
+
+        // ---------------- ระบบกล้อง ----------------
+        async function startCamera(deviceId = null) {
+            if (currentStream) currentStream.getTracks().forEach(track => track.stop());
+            const constraints = { video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "user" } };
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                currentStream = stream;
+                video.srcObject = stream;
+            } catch (err) { alert("ไม่สามารถเปิดกล้องได้"); }
+        }
+
+        async function getCameras() {
+            await startCamera();
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(d => d.kind === 'videoinput');
+            cameraSelect.innerHTML = videoDevices.length === 0 ? '<option>ไม่พบกล้อง</option>' : '';
+            videoDevices.forEach((device, index) => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.text = device.label || `กล้องตัวที่ ${index + 1}`;
+                cameraSelect.appendChild(option);
+            });
+        }
+        cameraSelect.addEventListener('change', (e) => startCamera(e.target.value));
+
+        // ---------------- ระบบถ่ายรูปและ Fabric.js ----------------
+        function takePhoto() {
+            // สร้าง Canvas ชั่วคราวเพื่อดึงภาพจาก Video
+            const tempCanvas = document.createElement('canvas');
+            // ใช้ขนาดของกรอบที่แสดงผลจริง เพื่อไม่ให้รูปผิดเพี้ยน
+            const container = document.getElementById('canvasContainer');
+            tempCanvas.width = container.clientWidth;
+            tempCanvas.height = container.clientHeight;
+            
+            const ctx = tempCanvas.getContext('2d');
+            
+            // วาดภาพวิดีโอ (ตัดส่วนที่เกินออกให้พอดีกรอบเหมือน object-cover)
+            const ratio = Math.max(tempCanvas.width / video.videoWidth, tempCanvas.height / video.videoHeight);
+            const w = video.videoWidth * ratio;
+            const h = video.videoHeight * ratio;
+            const x = (tempCanvas.width - w) / 2;
+            const y = (tempCanvas.height - h) / 2;
+            
+            ctx.translate(tempCanvas.width, 0); // สลับซ้ายขวา (กระจก)
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, x, y, w, h);
+
+            // ซ่อนกล้อง เปิดพื้นที่ Editor
+            video.classList.add('hidden');
+            editorWrapper.classList.remove('hidden');
+
+            // เริ่มต้นใช้งาน Fabric.js
+            if(!canvas) {
+                canvas = new fabric.Canvas('canvasElement', {
+                    width: tempCanvas.width,
+                    height: tempCanvas.height,
+                    preserveObjectStacking: true // ให้วัตถุที่ถูกเลือกไม่บังกรอบ
+                });
+            } else {
+                canvas.clear();
+            }
+
+            // ตั้งภาพที่ถ่ายเป็นพื้นหลัง
+            fabric.Image.fromURL(tempCanvas.toDataURL('image/jpeg'), function(img) {
+                canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
+            });
+
+            // สลับสถานะปุ่มต่างๆ
+            document.getElementById('actionButtons').classList.remove('hidden');
+            document.getElementById('cameraSelector').classList.add('hidden');
+            btnCapture.classList.add('hidden'); // ซ่อนปุ่มถ่าย
+
+            // เปิดให้กดปุ่ม กรอบรูปและสติกเกอร์ ได้
+            btnFrame.classList.remove('opacity-50', 'cursor-not-allowed');
+            btnFrame.classList.add('hover:text-white', 'cursor-pointer');
+            btnSticker.classList.remove('opacity-50', 'cursor-not-allowed');
+            btnSticker.classList.add('hover:text-white', 'cursor-pointer');
+        }
+
+        function retakePhoto() {
+            editorWrapper.classList.add('hidden');
+            video.classList.remove('hidden');
+            document.getElementById('subToolbar').classList.add('hidden');
+            
+            document.getElementById('actionButtons').classList.add('hidden');
+            document.getElementById('cameraSelector').classList.remove('hidden');
+            btnCapture.classList.remove('hidden');
+
+            btnFrame.classList.add('opacity-50', 'cursor-not-allowed');
+            btnSticker.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+
+        function savePhoto() {
+            // ลบขอบเขตกล่องสี่เหลี่ยมก่อนเซฟ
+            canvas.discardActiveObject();
+            canvas.renderAll();
+            
+            const dataURL = canvas.toDataURL({ format: 'png', quality: 1 });
+            const link = document.createElement('a');
+            link.href = dataURL;
+            link.download = 'MyBooth-SWR17-' + Date.now() + '.png';
+            link.click();
+        }
+
+        // ---------------- ระบบสติกเกอร์และกรอบรูป ----------------
+        function toggleMenu(menuId) {
+            const subToolbar = document.getElementById('subToolbar');
+            const targetMenu = document.getElementById(menuId);
+            const otherMenu = menuId === 'stickerMenu' ? document.getElementById('frameMenu') : document.getElementById('stickerMenu');
+            
+            subToolbar.classList.remove('hidden');
+            otherMenu.classList.add('hidden');
+            
+            if (targetMenu.classList.contains('hidden')) {
+                targetMenu.classList.remove('hidden');
+            } else {
+                subToolbar.classList.add('hidden');
+                targetMenu.classList.add('hidden');
+            }
+        }
+
+        function addTextSticker(text) {
+            // สร้างสติกเกอร์แบบข้อความ/Emoji
+            const sticker = new fabric.Text(text, {
+                left: canvas.width / 2 - 30,
+                top: canvas.height / 2 - 30,
+                fontSize: 60,
+                fontFamily: 'sans-serif',
+                fill: '#ffffff',
+                shadow: new fabric.Shadow({ color: 'rgba(0,0,0,0.5)', blur: 5, offsetX: 2, offsetY: 2 })
+            });
+            canvas.add(sticker);
+            canvas.setActiveObject(sticker);
+        }
+
+        // ตัวแปรเก็บกรอบรูป เพื่อให้ลบออกได้เมื่อกดเปลี่ยน
+        let currentFrame = null; 
+
+        function addFrame(type) {
+            // ลบกรอบเดิมออกก่อน
+            if (currentFrame) canvas.remove(currentFrame);
+            
+            if (type === 'clear') return;
+
+            let strokeColor = '#ffffff';
+            let strokeWidth = 20;
+            let shadow = null;
+
+            if (type === 'polaroid') {
+                strokeColor = '#ffffff';
+                strokeWidth = 30; // ขอบหนาเหมือนโพลารอยด์
+            } else if (type === 'neon') {
+                strokeColor = '#ec4899'; // สีชมพู
+                strokeWidth = 15;
+                shadow = new fabric.Shadow({ color: '#ec4899', blur: 20 });
+            }
+
+            // สร้างกรอบรูปโดยใช้รูปทรงสี่เหลี่ยมกลวง
+            currentFrame = new fabric.Rect({
+                left: 0, top: 0,
+                width: canvas.width,
+                height: canvas.height,
+                fill: 'transparent',
+                stroke: strokeColor,
+                strokeWidth: strokeWidth * 2, // Fabric จัดกึ่งกลางเส้นขอบ เลยต้องคูณ 2
+                selectable: false, // ห้ามผู้ใช้คลิกเลื่อนกรอบรูป
+                evented: false,
+                shadow: shadow
+            });
+
+            canvas.add(currentFrame);
+            // ดันกรอบรูปให้อยู่ชั้นบนสุดเสมอ
+            currentFrame.bringToFront();
+        }
+
+        getCameras();
+    </script>
+</body>
+</html>
